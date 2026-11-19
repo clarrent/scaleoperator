@@ -37,25 +37,19 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item -Recurse -Force $vst3.FullName "dist/Scale Operator.vst3"
 
-      - name: Write installer script
+      - name: Download VC++ Redistributable
         shell: pwsh
-        run: |
-          @'
-          @echo off
-          echo Installing Scale Operator.vst3 ...
-          set DEST=%ProgramFiles%\Common Files\VST3
-          if not exist "%DEST%" mkdir "%DEST%"
-          xcopy /E /I /Y "%~dp0Scale Operator.vst3" "%DEST%\Scale Operator.vst3"
-          echo.
-          echo Done. Open FL Studio, go to Options -^> Manage Plugins -^> Find Plugins to pick it up.
-          pause
-          '@ | Out-File -FilePath "dist/INSTALL.bat" -Encoding ascii
+        run: Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
 
-      - name: Zip the dist folder
+      - name: Install Inno Setup
         shell: pwsh
-        run: Compress-Archive -Path dist/* -DestinationPath ScaleOperator-build.zip -Force
+        run: choco install innosetup -y --no-progress
 
-      - name: Commit built zip to build-output branch
+      - name: Compile installer
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+
+      - name: Commit built installer to build-output branch
         shell: bash
         run: |
           git config user.email "actions@github.com"
@@ -63,7 +57,7 @@ jobs:
           git checkout --orphan build-output
           git rm -rf --cached . > /dev/null 2>&1 || true
           mkdir -p outgoing
-          mv ScaleOperator-build.zip outgoing/
-          git add outgoing/ScaleOperator-build.zip
-          git commit -m "Built plugin $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mv installer_out/ScaleOperatorSetup.exe outgoing/
+          git add outgoing/ScaleOperatorSetup.exe
+          git commit -m "Built installer $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push --force origin build-output
