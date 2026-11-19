@@ -1,0 +1,47 @@
+name: Build VST3
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Locate built VST3
+        shell: pwsh
+        run: |
+          $vst3 = Get-ChildItem -Path build -Recurse -Filter "Scale Operator.vst3" -Directory | Select-Object -First 1
+          if (-not $vst3) { throw "Could not find built Scale Operator.vst3" }
+          Write-Host "Found: $($vst3.FullName)"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse -Force $vst3.FullName "dist/Scale Operator.vst3"
+
+      - name: Write installer script
+        shell: pwsh
+        run: |
+          @'
+          @echo off
+          echo Installing Scale Operator.vst3 ...
+          set DEST=%ProgramFiles%\Common Files\VST3
+          if not exist "%DEST%" mkdir "%DEST%"
+          xcopy /E /I /Y "%~dp0Scale Operator.vst3" "%DEST%\Scale Operator.vst3"
+          echo.
+          echo Done. Open FL Studio, go to Options -^> Manage Plugins -^> Find Plugins to pick it up.
+          pause
+          '@ | Out-File -FilePath "dist/INSTALL.bat" -Encoding ascii
+
+      - name: Upload built plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScaleOperator-VST3-Windows
+          path: dist
