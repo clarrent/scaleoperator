@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-2022
@@ -25,7 +28,7 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Locate built VST3
+      - name: Locate built VST3 and stage dist folder
         shell: pwsh
         run: |
           $vst3 = Get-ChildItem -Path build -Recurse -Filter "Scale Operator.vst3" -Directory | Select-Object -First 1
@@ -48,8 +51,19 @@ jobs:
           pause
           '@ | Out-File -FilePath "dist/INSTALL.bat" -Encoding ascii
 
-      - name: Upload built plugin
-        uses: actions/upload-artifact@v4
-        with:
-          name: ScaleOperator-VST3-Windows
-          path: dist
+      - name: Zip the dist folder
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath ScaleOperator-build.zip -Force
+
+      - name: Commit built zip to build-output branch
+        shell: bash
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git checkout --orphan build-output
+          git rm -rf --cached . > /dev/null 2>&1 || true
+          mkdir -p outgoing
+          mv ScaleOperator-build.zip outgoing/
+          git add outgoing/ScaleOperator-build.zip
+          git commit -m "Built plugin $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push --force origin build-output
